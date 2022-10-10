@@ -16,6 +16,8 @@ public:
             TLS
         };
 
+        HttpResponseHandler handler;
+
         // std::string host;
         // std::uint16_t port;
         // std::string target;
@@ -38,7 +40,7 @@ public:
 
     void send(boost::beast::http::verb method, const std::string& target, HttpResponseHandler handler)
     {
-        transport->queueRequest(method, target, handler);
+        transport->enqueue(method, target, handler);
     }
 
 private:

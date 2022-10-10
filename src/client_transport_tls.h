@@ -25,6 +25,11 @@ public:
         return {};
     }
 
+    void asyncWrite(const boost::beast::http::request<boost::beast::http::string_body>& req) override
+    {
+        
+    }
+
     // void async_handshake() override
     // {
     //     stream.async_handshake(boost::asio::ssl::stream_base::client,

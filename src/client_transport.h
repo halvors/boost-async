@@ -13,7 +13,7 @@
 
 using namespace std::literals::chrono_literals;
 
-typedef std::function<void(boost::beast::http::status)> HttpResponseHandler;
+typedef std::function<void(boost::beast::http::status, const std::string&)> HttpResponseHandler;
 
 class ClientTransport
 {
@@ -30,44 +30,72 @@ public:
     virtual boost::beast::tcp_stream& getStream() = 0;
     virtual boost::beast::error_code setHostname([[maybe_unused]] const std::string& hostname) { return {}; }
 
-    virtual void async_handshake() { processQueue(); }
+    virtual void asyncHandshake() { processQueue(); }
+    virtual void asyncWrite(const boost::beast::http::request<boost::beast::http::string_body>& req) = 0;
+    virtual void asyncRead() = 0;
 
-    virtual void write(boost::beast::http::request<boost::beast::http::string_body>& req, HttpResponseHandler handler) = 0;
+    void handleWrite(const boost::beast::error_code error, const std::size_t /*bytesTransferred*/)
+    {
+        if (error)
+            return handleError(error);
 
+        asyncRead();
+    }
+    
+    void handleRead(const boost::beast::error_code error, const std::size_t /*bytesTransferred*/)
+    {
+        if (error)
+            return handleError(error);
+
+        // Call handler function
+        auto handler = queue.front().second;
+        handler(res.result(), boost::beast::buffers_to_string(res.body().data()));
+
+        // Remove request from queue
+        queue.pop_front();
+
+        // Clear response
+        res.clear();
+        res.body().clear();
+
+        processQueue();
+    }
+    
     // virtual void shutdown(boost::asio::ip::tcp::socket::shutdown_type type, boost::beast::error_code& error)
     // {
     //     getStream().socket().shutdown(type, error);
     // }
 
-    void queueRequest(boost::beast::http::verb method, const std::string& target, HttpResponseHandler handler)
+    void enqueue(boost::beast::http::verb method, const std::string& target, HttpResponseHandler handler)
     {
         // Set up an HTTP GET request message
-        boost::beast::http::request<boost::beast::http::string_body> beastReq;
-        beastReq.set(boost::beast::http::field::host, query.host_name());
-        beastReq.set(boost::beast::http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+        boost::beast::http::request<boost::beast::http::string_body> req;
+        req.set(boost::beast::http::field::host, query.host_name());
+        req.set(boost::beast::http::field::user_agent, BOOST_BEAST_VERSION_STRING);
 
-        beastReq.method(method);
-        //beastReq.version(11);
-        beastReq.target(target);
+        req.method(method);
+        req.version(11);
+        req.target(target);
 
-        Log::info("Queueing request for processing..."); 
+        // TODO: Handle json body for POST etc?
 
         // Queue request for processing later
-        queue.emplace_back(std::move(beastReq), handler);
+        queue.emplace_back(std::move(req), handler);
 
-        if (queue.size() == 1) // no pending
+        // Start processing of queue if no other pending
+        if (queue.size() == 1)
             processQueue();
     }
 
     void processQueue()
     {
-        // If queue is empty we cannot process the queue
+        // Return in case of empty queue
         if (queue.empty())
             return;
 
         if (!running) {
             // Look up the domain name
-            return resolver.async_resolve(query, [this](boost::beast::error_code error, boost::asio::ip::tcp::resolver::results_type results) {
+            return resolver.async_resolve(query, [this](const boost::beast::error_code error, boost::asio::ip::tcp::resolver::results_type results) {
                 if (error)
                     return handleError(error);
 
@@ -83,7 +111,7 @@ public:
 
                 // Make the connection on any of the endpoints discovered by resolve
                 getStream().async_connect(results,
-                    [this](boost::beast::error_code error, boost::asio::ip::tcp::resolver::results_type::endpoint_type endpoint) {
+                    [this](const boost::beast::error_code error, const boost::asio::ip::tcp::resolver::results_type::endpoint_type& endpoint) {
                         if (error)
                             return handleError(error);
 
@@ -93,30 +121,15 @@ public:
                         running = true;
 
                         // Perform handshake
-                        async_handshake();
+                        asyncHandshake();
                     });
             });
         } else {
-            auto req = queue.front().first;
-
-            write(req, queue.front().second);
+            asyncWrite(queue.front().first);
 
             // request done
-            queue.pop_front();
+            //queue.pop_front();
         }
-
-        //getStream().expires_after(timeout);
-
-        // boost::beast::http::async_write(getStream(), req,
-        //     std::bind(&ClientTransport::async_write, this, std::placeholders::_1));
-
-        // boost::beast::http::async_write(getStream(), req,
-        //     [](boost::beast::error_code error, const size_t) {
-        //         // if (error)
-        //         //     return handleError(error);
-
-        //         Log::error("Write works"); 
-        //     });
     }
     
     void handleError(boost::system::error_code error)
@@ -134,6 +147,7 @@ protected:
 
     std::deque<std::pair<boost::beast::http::request<boost::beast::http::string_body>, HttpResponseHandler>> queue;
     bool running = false;
+    boost::beast::http::response<boost::beast::http::dynamic_body> res;
 
-    static constexpr std::chrono::seconds timeout = 80s;
+    static constexpr std::chrono::seconds timeout = 30s;
 };

@@ -14,29 +14,21 @@ public:
 
     boost::beast::tcp_stream& getStream() override { return stream; }
 
-    void write(boost::beast::http::request<boost::beast::http::string_body>& req, HttpResponseHandler handler) override
+    void asyncWrite(const boost::beast::http::request<boost::beast::http::string_body>& req) override
     {
-        // boost::beast::http::async_write(stream, req, 
-        //     std::bind(&ClientTransportPlain::handle_write, this, std::placeholders::_1));
+        stream.expires_after(timeout);
 
         boost::beast::http::async_write(stream, req, 
-            [](boost::beast::error_code error, const size_t) {
-                // if (error)
-                //     return handleError(error);
-
-                Log::error("Write works"); 
-            });
+            std::bind(&ClientTransportPlain::handleWrite, this, std::placeholders::_1, std::placeholders::_2));
     }
 
-    // virtual void write(boost::beast::http::request<boost::beast::http::string_body>& request) override
-    // {
-    //     boost::beast::http::write(stream, request);
-    // }
+    void asyncRead() override
+    {
+        stream.expires_after(timeout);
 
-    // virtual void read(boost::beast::http::response<boost::beast::http::dynamic_body>& response, boost::beast::error_code& error) override
-    // {
-    //     boost::beast::http::read(stream, buffer, response, error);
-    // }
+        boost::beast::http::async_read(stream, buffer, res, 
+            std::bind(&ClientTransportPlain::handleRead, this, std::placeholders::_1, std::placeholders::_2));
+    }
 
 private:
     boost::beast::tcp_stream stream;
