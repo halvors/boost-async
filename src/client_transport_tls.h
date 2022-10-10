@@ -7,7 +7,7 @@
 class ClientTransportTLS final : public ClientTransport
 {
 public:
-    ClientTransportTLS(boost::asio::io_context& ioContext, boost::asio::ssl::context& sslContext, const std::string& host, std::uint16_t port) :
+    ClientTransportTLS(boost::asio::io_context& ioContext, boost::asio::ssl::context sslContext, const std::string& host, std::uint16_t port) :
         ClientTransport(ioContext, host, port),
         stream(ioContext, sslContext)
     {
@@ -25,31 +25,32 @@ public:
         return {};
     }
 
-    void asyncWrite(const boost::beast::http::request<boost::beast::http::string_body>& req) override
+    void asyncHandshake() override
     {
-        
+        stream.async_handshake(boost::asio::ssl::stream_base::client,
+            [this](const boost::beast::error_code error) {
+                if (error)
+                    return handleError(error);
+
+                processQueue();
+            });
     }
 
-    // void async_handshake() override
-    // {
-    //     stream.async_handshake(boost::asio::ssl::stream_base::client,
-    //         [this](boost::beast::error_code error) {
-    //             if (error)
-    //                 return handleError(error);
+    void asyncWrite(const boost::beast::http::request<boost::beast::http::string_body>& req) override
+    {
+        boost::beast::get_lowest_layer(stream).expires_after(timeout);
 
-    //             processQueue();
-    //         });
-    // }
+        boost::beast::http::async_write(stream, req, 
+            std::bind(&ClientTransportPlain::handleWrite, this, std::placeholders::_1, std::placeholders::_2));
+    }
 
-    // virtual void write(boost::beast::http::request<boost::beast::http::string_body>& request) override
-    // {
-    //     boost::beast::http::write(stream, request);
-    // }
+    void asyncRead() override
+    {
+        boost::beast::get_lowest_layer(stream).expires_after(timeout);
 
-    // virtual void read(boost::beast::http::response<boost::beast::http::dynamic_body>& response, boost::beast::error_code& error) override
-    // {
-    //     boost::beast::http::read(stream, buffer, response, error);
-    // }
+        boost::beast::http::async_read(stream, buffer, res, 
+            std::bind(&ClientTransportPlain::handleRead, this, std::placeholders::_1, std::placeholders::_2));
+    }
 
     // virtual void shutdown(boost::asio::ip::tcp::socket::shutdown_type type, boost::beast::error_code& error)
     // {

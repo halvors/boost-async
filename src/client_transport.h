@@ -8,12 +8,13 @@
 #include <boost/beast/ssl.hpp>
 #include <boost/beast/version.hpp>
 #include <fmt/format.h>
+#include <nlohmann/json.hpp>
 
 #include "log.h"
 
 using namespace std::literals::chrono_literals;
 
-typedef std::function<void(boost::beast::http::status, const std::string&)> HttpResponseHandler;
+typedef std::function<void(boost::beast::http::status, const nlohmann::json&)> HttpResponseHandler;
 
 class ClientTransport
 {
@@ -47,17 +48,26 @@ public:
         if (error)
             return handleError(error);
 
+        // Parse body
+        //std::string body = boost::beast::buffers_to_string(res.body().data());
+        std::string& body = res.body();
+        nlohmann::json json;
+
+        if (nlohmann::json::accept(body))
+            json = nlohmann::json::parse(body);
+        
         // Call handler function
         auto handler = queue.front().second;
-        handler(res.result(), boost::beast::buffers_to_string(res.body().data()));
+        handler(res.result(), json);
 
         // Remove request from queue
         queue.pop_front();
 
-        // Clear response
+        // Cleanup
         res.clear();
-        res.body().clear();
+        body.clear();
 
+        // Continue to process queue
         processQueue();
     }
     
@@ -66,7 +76,7 @@ public:
     //     getStream().socket().shutdown(type, error);
     // }
 
-    void enqueue(boost::beast::http::verb method, const std::string& target, HttpResponseHandler handler)
+    void enqueue(boost::beast::http::verb method, const std::string& target, HttpResponseHandler handler, const nlohmann::json& json)
     {
         // Set up an HTTP GET request message
         boost::beast::http::request<boost::beast::http::string_body> req;
@@ -74,6 +84,13 @@ public:
         req.set(boost::beast::http::field::user_agent, BOOST_BEAST_VERSION_STRING);
 
         req.method(method);
+
+        if (method == boost::beast::http::verb::post) {
+            req.set(boost::beast::http::field::content_type, "application/json");
+            req.body() = json.dump();
+            req.prepare_payload();
+        }
+
         req.version(11);
         req.target(target);
 
@@ -124,12 +141,9 @@ public:
                         asyncHandshake();
                     });
             });
-        } else {
-            asyncWrite(queue.front().first);
-
-            // request done
-            //queue.pop_front();
         }
+            
+        asyncWrite(queue.front().first);
     }
     
     void handleError(boost::system::error_code error)
@@ -147,7 +161,8 @@ protected:
 
     std::deque<std::pair<boost::beast::http::request<boost::beast::http::string_body>, HttpResponseHandler>> queue;
     bool running = false;
-    boost::beast::http::response<boost::beast::http::dynamic_body> res;
+    //boost::beast::http::response<boost::beast::http::dynamic_body> res;
+    boost::beast::http::response<boost::beast::http::string_body> res;
 
     static constexpr std::chrono::seconds timeout = 30s;
 };

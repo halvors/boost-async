@@ -1,18 +1,5 @@
 #include "client.h"
 
-#include <boost/algorithm/string/predicate.hpp>
-#include <boost/algorithm/string/replace.hpp>
-#include <boost/algorithm/string/erase.hpp>
-#include <boost/beast/core.hpp>
-#include <boost/beast/http.hpp>
-#include <boost/beast/version.hpp>
-#include <boost/asio/connect.hpp>
-#include <boost/asio/ip/tcp.hpp>
-#include <boost/asio/strand.hpp>
-#include <fmt/format.h>
-
-#include "log.h"
-#include "client_transport.h"
 #include "client_transport_plain.h"
 #include "client_transport_tls.h"
 
@@ -25,8 +12,8 @@ Client::Client(boost::asio::io_context& ioContext, const std::string& host, std:
             break;
 
         case Request::Encryption::TLS:
-        //     transport = std::make_unique<ClientTransportTLS>(ioContext, createSslContext(), host, port);
-        //     transport->setHostname(host);
+            transport = std::make_unique<ClientTransportTLS>(ioContext, createSslContext(), host, port);
+            transport->setHostname(host);
             break;
     }
 }

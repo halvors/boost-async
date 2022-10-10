@@ -38,9 +38,9 @@ public:
 
     boost::asio::ssl::context createSslContext();
 
-    void send(boost::beast::http::verb method, const std::string& target, HttpResponseHandler handler)
+    void send(boost::beast::http::verb method, const std::string& target, HttpResponseHandler handler, const nlohmann::json& json = {})
     {
-        transport->enqueue(method, target, handler);
+        transport->enqueue(method, target, handler, json);
     }
 
 private:
