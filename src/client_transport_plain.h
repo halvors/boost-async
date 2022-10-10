@@ -12,6 +12,7 @@ public:
 
     }
 
+protected:
     boost::beast::tcp_stream& getStream() override { return stream; }
 
     void asyncWrite(const boost::beast::http::request<boost::beast::http::string_body>& req) override

@@ -28,9 +28,38 @@ public:
 
     virtual ~ClientTransport() = default;
 
-    virtual boost::beast::tcp_stream& getStream() = 0;
     virtual boost::beast::error_code setHostname([[maybe_unused]] const std::string& hostname) { return {}; }
 
+    void enqueue(boost::beast::http::verb method, const std::string& target, HttpResponseHandler handler, const nlohmann::json& json)
+    {
+        // Set up an HTTP GET request message
+        boost::beast::http::request<boost::beast::http::string_body> req;
+        req.set(boost::beast::http::field::host, query.host_name());
+        req.set(boost::beast::http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+
+        // Only add body for appropriate methods
+        if (method == boost::beast::http::verb::post ||
+            method == boost::beast::http::verb::put ||
+            method == boost::beast::http::verb::patch) {
+            req.set(boost::beast::http::field::content_type, "application/json");
+            req.body() = json.dump();
+            req.prepare_payload();
+        }
+
+        req.method(method);
+        req.version(11);
+        req.target(sanitizeURI(target));
+
+        // Queue request for processing later
+        queue.emplace_back(std::move(req), handler);
+
+        // Start processing of queue if no other pending
+        if (queue.size() == 1)
+            processQueue();
+    }
+
+protected:
+    virtual boost::beast::tcp_stream& getStream() = 0;
     virtual void asyncHandshake() { processQueue(); }
     virtual void asyncWrite(const boost::beast::http::request<boost::beast::http::string_body>& req) = 0;
     virtual void asyncRead() = 0;
@@ -49,8 +78,7 @@ public:
             return handleError(error);
 
         // Parse body
-        //std::string body = boost::beast::buffers_to_string(res.body().data());
-        std::string& body = res.body();
+        std::string body = boost::beast::buffers_to_string(res.body().data());
         nlohmann::json json;
 
         if (nlohmann::json::accept(body))
@@ -65,7 +93,7 @@ public:
 
         // Cleanup
         res.clear();
-        body.clear();
+        res.body().clear();
 
         // Continue to process queue
         processQueue();
@@ -75,34 +103,6 @@ public:
     // {
     //     getStream().socket().shutdown(type, error);
     // }
-
-    void enqueue(boost::beast::http::verb method, const std::string& target, HttpResponseHandler handler, const nlohmann::json& json)
-    {
-        // Set up an HTTP GET request message
-        boost::beast::http::request<boost::beast::http::string_body> req;
-        req.set(boost::beast::http::field::host, query.host_name());
-        req.set(boost::beast::http::field::user_agent, BOOST_BEAST_VERSION_STRING);
-
-        req.method(method);
-
-        if (method == boost::beast::http::verb::post) {
-            req.set(boost::beast::http::field::content_type, "application/json");
-            req.body() = json.dump();
-            req.prepare_payload();
-        }
-
-        req.version(11);
-        req.target(target);
-
-        // TODO: Handle json body for POST etc?
-
-        // Queue request for processing later
-        queue.emplace_back(std::move(req), handler);
-
-        // Start processing of queue if no other pending
-        if (queue.size() == 1)
-            processQueue();
-    }
 
     void processQueue()
     {
@@ -145,8 +145,8 @@ public:
             
         asyncWrite(queue.front().first);
     }
-    
-    void handleError(boost::system::error_code error)
+
+    static void handleError(boost::system::error_code error)
     {
         if (!error)
             return;
@@ -154,15 +154,22 @@ public:
         Log::warning(fmt::format("Error: {} ({})", error.message(), error.value()));
     }
 
-protected:
     boost::asio::ip::tcp::resolver::query query;
     boost::asio::ip::tcp::resolver resolver;
     boost::beast::flat_buffer buffer;
 
     std::deque<std::pair<boost::beast::http::request<boost::beast::http::string_body>, HttpResponseHandler>> queue;
+    boost::beast::http::response<boost::beast::http::dynamic_body> res;
     bool running = false;
-    //boost::beast::http::response<boost::beast::http::dynamic_body> res;
-    boost::beast::http::response<boost::beast::http::string_body> res;
 
     static constexpr std::chrono::seconds timeout = 30s;
+
+private:
+    static std::string sanitizeURI(const std::string& s)
+    {
+        if (s.front() != '/')
+            return '/' + s;
+
+        return s;
+    }
 };

@@ -14,8 +14,6 @@ public:
 
     }
 
-    boost::beast::tcp_stream& getStream() override { return stream.next_layer(); }
-
     boost::beast::error_code setHostname(const std::string& hostname) override
     {
         // Set SNI Hostname (many hosts need this to handshake successfully)
@@ -24,6 +22,9 @@ public:
 
         return {};
     }
+
+protected:
+    boost::beast::tcp_stream& getStream() override { return stream.next_layer(); }
 
     void asyncHandshake() override
     {
@@ -41,7 +42,7 @@ public:
         boost::beast::get_lowest_layer(stream).expires_after(timeout);
 
         boost::beast::http::async_write(stream, req, 
-            std::bind(&ClientTransportPlain::handleWrite, this, std::placeholders::_1, std::placeholders::_2));
+            std::bind(&ClientTransportTLS::handleWrite, this, std::placeholders::_1, std::placeholders::_2));
     }
 
     void asyncRead() override
@@ -49,7 +50,7 @@ public:
         boost::beast::get_lowest_layer(stream).expires_after(timeout);
 
         boost::beast::http::async_read(stream, buffer, res, 
-            std::bind(&ClientTransportPlain::handleRead, this, std::placeholders::_1, std::placeholders::_2));
+            std::bind(&ClientTransportTLS::handleRead, this, std::placeholders::_1, std::placeholders::_2));
     }
 
     // virtual void shutdown(boost::asio::ip::tcp::socket::shutdown_type type, boost::beast::error_code& error)

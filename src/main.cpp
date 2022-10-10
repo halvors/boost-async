@@ -14,7 +14,7 @@ int main()
         asio::io_context context;
 
         Client client(context, "api.ipify.org", 443, Client::Request::Encryption::TLS);
-        client.send(boost::beast::http::verb::get, "/?format=json", [](boost::beast::http::status status, const nlohmann::json& json) {
+        client.send(boost::beast::http::verb::get, "?format=json", [](boost::beast::http::status status, const nlohmann::json& json) {
             Log::info(fmt::format("Requst finished ({}): {}", boost::beast::http::obsolete_reason(status).to_string(), json.dump()));
         });
 
