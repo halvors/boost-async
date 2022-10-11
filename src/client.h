@@ -1,6 +1,7 @@
 #pragma once
 
 #include <boost/beast/http.hpp>
+#include <boost/beast/ssl.hpp>
 #include <boost/beast/core/buffers_to_string.hpp>
 #include <boost/beast/core/tcp_stream.hpp>
 
@@ -43,6 +44,6 @@ public:
         transport->enqueue(method, target, handler, json);
     }
 
-private:
+// private:
     std::unique_ptr<ClientTransport> transport;
 };

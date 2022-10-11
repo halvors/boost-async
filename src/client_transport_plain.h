@@ -5,31 +5,26 @@
 class ClientTransportPlain final : public ClientTransport
 {
 public:
-    ClientTransportPlain(boost::asio::io_context& ioContext, const std::string& host, std::uint16_t port) : 
-        ClientTransport(ioContext, host, port),
-        stream(ioContext)
-    {
+    explicit ClientTransportPlain(boost::asio::io_context& ioContext, const std::string& host, std::uint16_t port);
 
+    ~ClientTransportPlain()
+    {
+        // boost::beast::error_code ec;
+        // stream.socket().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+
+        // Log::info("test1");
+
+        // if (ec)
+        //     Log::error(fmt::format("test2: {} ({})", ec.message(), ec.value()));
+
+        // Log::info("test2");
     }
 
 protected:
     boost::beast::tcp_stream& getStream() override { return stream; }
 
-    void asyncWrite(const boost::beast::http::request<boost::beast::http::string_body>& req) override
-    {
-        stream.expires_after(timeout);
-
-        boost::beast::http::async_write(stream, req, 
-            std::bind(&ClientTransportPlain::handleWrite, this, std::placeholders::_1, std::placeholders::_2));
-    }
-
-    void asyncRead() override
-    {
-        stream.expires_after(timeout);
-
-        boost::beast::http::async_read(stream, buffer, res, 
-            std::bind(&ClientTransportPlain::handleRead, this, std::placeholders::_1, std::placeholders::_2));
-    }
+    void asyncWrite(const boost::beast::http::request<boost::beast::http::string_body>& req) override;
+    void asyncRead() override;
 
 private:
     boost::beast::tcp_stream stream;
