@@ -18,13 +18,16 @@ boost::beast::error_code ClientTransportTLS::setHostname(const std::string& host
     return {};
 }
 
-void ClientTransportTLS::shutdown(boost::asio::ip::tcp::socket::shutdown_type, const boost::beast::error_code& error)
+void ClientTransportTLS::shutdown(boost::asio::ip::tcp::socket::shutdown_type type, const boost::beast::error_code& error)
 {
-    stream.async_shutdown([](const boost::system::error_code&) {
-        Log::info("SSL stream is now shut down");
-    });
+    stream.async_shutdown([this](const boost::system::error_code& error) {
+        if (error)
+            return handleError(error);
 
-    //ClientTransport::shutdown(type, error);
+        Log::info("SSL stream is now shut down");
+
+        //ClientTransport::shutdown(type, error);
+    });
 }
 
 void ClientTransportTLS::asyncHandshake()
